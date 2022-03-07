@@ -158,7 +158,7 @@ func (a *ApplicationPolicy) Index() map[string]string {
 	return index
 }
 
-// ApplicationTrait application trait
+// ApplicationTrait application trait   应用trait定义，主要参数在Properties中
 type ApplicationTrait struct {
 	Alias       string      `json:"alias"`
 	Description string      `json:"description"`

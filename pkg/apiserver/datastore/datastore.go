@@ -67,7 +67,7 @@ type Config struct {
 	Database string
 }
 
-// Entity database data model
+// Entity database data model，数据库实体模型，需要实现的方法，读取表名信息
 type Entity interface {
 	SetCreateTime(time time.Time)
 	SetUpdateTime(time time.Time)

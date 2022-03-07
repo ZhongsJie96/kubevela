@@ -154,6 +154,7 @@ func (m *kubeapi) Get(ctx context.Context, entity datastore.Entity) error {
 		}
 		return datastore.NewDBError(err)
 	}
+	// 将configmap中data数据解析出来复制给实体类
 	if err := json.Unmarshal(configMap.BinaryData["data"], entity); err != nil {
 		return datastore.NewDBError(err)
 	}
@@ -165,33 +166,40 @@ func (m *kubeapi) Put(ctx context.Context, entity datastore.Entity) error {
 	if entity.PrimaryKey() == "" {
 		return datastore.ErrPrimaryEmpty
 	}
+	// 读取表名，每一个实体都需要实现方法
 	if entity.TableName() == "" {
 		return datastore.ErrTableNameEmpty
 	}
-	// update labels
+	// update labels 获取实体类的索引，用于过滤信息 （name，appPrimaryKey，type）
 	labels := entity.Index()
 	if labels == nil {
 		labels = make(map[string]string)
 	}
 	labels["table"] = entity.TableName()
 	labels["primaryKey"] = entity.PrimaryKey()
+	// 设置实体类的更新时间
 	entity.SetUpdateTime(time.Now())
 	var configMap corev1.ConfigMap
+	// 读取config信息 namespace：命名空间，名字：cm名  主要实现类client.Client
 	if err := m.kubeclient.Get(ctx, types.NamespacedName{Namespace: m.namespace, Name: generateName(entity)}, &configMap); err != nil {
 		if apierrors.IsNotFound(err) {
 			return datastore.ErrRecordNotExist
 		}
 		return datastore.NewDBError(err)
 	}
+	// 将实体类信息转化为字符串类型
 	data, err := json.Marshal(entity)
 	if err != nil {
 		return datastore.NewDBError(err)
 	}
+	// 更新数据库configmap信息
 	configMap.BinaryData["data"] = data
 	configMap.Labels = labels
 	if err := m.kubeclient.Update(ctx, &configMap); err != nil {
+		log.Logger.Info("更新kubevela-database下configmap失败")
 		return datastore.NewDBError(err)
 	}
+	log.Logger.Info("更新kubevela-database下configmap成功")
 	return nil
 }
 

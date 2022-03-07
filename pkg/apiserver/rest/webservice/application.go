@@ -192,6 +192,7 @@ func (c *applicationWebService) GetWebService() *restful.WebService {
 		Returns(400, "", bcode.Bcode{}).
 		Writes(apis.DetailComponentResponse{}))
 
+	// 更新组件基本config信息
 	ws.Route(ws.PUT("/{name}/components/{compName}").To(c.updateComponent).
 		Doc("update component config").
 		Filter(c.appCheckFilter).
@@ -201,6 +202,25 @@ func (c *applicationWebService) GetWebService() *restful.WebService {
 		Metadata(restfulspec.KeyOpenAPITags, tags).
 		Reads(apis.UpdateApplicationComponentRequest{}).
 		Returns(200, "", apis.ComponentBase{}).
+		Returns(400, "", bcode.Bcode{}).
+		Writes(apis.ComponentBase{}))
+
+	ws.Route(ws.PUT("/{name}/components/{compName}/test").To(c.updateComponentTest).
+		Doc("update component config").
+		// 校验应用是否存在同时将应用信息添加到context中
+		Filter(c.appCheckFilter).
+		// 校验组件是否存在同时将组件信息添加到context中
+		Filter(c.componentCheckFilter).
+		// 记录请求参数文档
+		Param(ws.PathParameter("name", "identifier of the application").DataType("string")).
+		Param(ws.PathParameter("compName", "identifier of the component").DataType("string")).
+		// restful 元数据
+		Metadata(restfulspec.KeyOpenAPITags, tags).
+		// 读取requestbody参数
+		Reads(apis.UpdateApplicationComponentRequest{}).
+		// 成功
+		Returns(200, "", apis.ComponentBase{}).
+		// 失败返回
 		Returns(400, "", bcode.Bcode{}).
 		Writes(apis.ComponentBase{}))
 
@@ -266,6 +286,7 @@ func (c *applicationWebService) GetWebService() *restful.WebService {
 		Returns(400, "", bcode.Bcode{}).
 		Writes(apis.DetailPolicyResponse{}))
 
+	// 添加一个新的trait
 	ws.Route(ws.POST("/{name}/components/{compName}/traits").To(c.addApplicationTrait).
 		Doc("add trait for a component").
 		Filter(c.appCheckFilter).
@@ -278,6 +299,7 @@ func (c *applicationWebService) GetWebService() *restful.WebService {
 		Returns(400, "", bcode.Bcode{}).
 		Writes(apis.ApplicationTrait{}))
 
+	// 更新应用trait特性
 	ws.Route(ws.PUT("/{name}/components/{compName}/traits/{traitType}").To(c.updateApplicationTrait).
 		Doc("update trait from a component").
 		Filter(c.appCheckFilter).
@@ -740,6 +762,36 @@ func (c *applicationWebService) detailComponent(req *restful.Request, res *restf
 }
 
 func (c *applicationWebService) updateComponent(req *restful.Request, res *restful.Response) {
+	// 从context中获取应用基本信息
+	app := req.Request.Context().Value(&apis.CtxKeyApplication).(*model.Application)
+	// 从context中获取组件基本信息
+	component := req.Request.Context().Value(&apis.CtxKeyApplicationComponent).(*model.ApplicationComponent)
+	// Verify the validity of parameters
+	var updateReq apis.UpdateApplicationComponentRequest
+	// 读取请求参数，如果需要解析将执行解压操作，根据请求参数具体类型进行解码，JSON将设置读取number为number而不是float64格式
+	if err := req.ReadEntity(&updateReq); err != nil {
+		bcode.ReturnError(req, res, err)
+		return
+	}
+	// 校验请求参数格式
+	if err := validate.Struct(&updateReq); err != nil {
+		bcode.ReturnError(req, res, err)
+		return
+	}
+	base, err := c.applicationUsecase.UpdateComponent(req.Request.Context(), app, component, updateReq)
+	if err != nil {
+		bcode.ReturnError(req, res, err)
+		return
+	}
+	// 将返回结果写到response里面
+	if err := res.WriteEntity(base); err != nil {
+		bcode.ReturnError(req, res, err)
+		return
+	}
+}
+
+func (c *applicationWebService) updateComponentTest(req *restful.Request, res *restful.Response) {
+	// 1. 获取路径请求参数 （app,component)
 	app := req.Request.Context().Value(&apis.CtxKeyApplication).(*model.Application)
 	component := req.Request.Context().Value(&apis.CtxKeyApplicationComponent).(*model.ApplicationComponent)
 	// Verify the validity of parameters
@@ -908,7 +960,9 @@ func (c *applicationWebService) addApplicationTrait(req *restful.Request, res *r
 	}
 }
 
+// 更新应用trait特性
 func (c *applicationWebService) updateApplicationTrait(req *restful.Request, res *restful.Response) {
+	// 获取应用信息
 	app := req.Request.Context().Value(&apis.CtxKeyApplication).(*model.Application)
 	var updateReq apis.UpdateApplicationTraitRequest
 	if err := req.ReadEntity(&updateReq); err != nil {
@@ -919,6 +973,7 @@ func (c *applicationWebService) updateApplicationTrait(req *restful.Request, res
 		bcode.ReturnError(req, res, err)
 		return
 	}
+	// 读取路径参数 req.PathParameter
 	trait, err := c.applicationUsecase.UpdateApplicationTrait(req.Request.Context(), app,
 		&model.ApplicationComponent{Name: req.PathParameter("compName")}, req.PathParameter("traitType"), updateReq)
 	if err != nil {

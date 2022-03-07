@@ -19,6 +19,7 @@ package usecase
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -1025,6 +1026,7 @@ func (c *applicationUsecaseImpl) GetApplicationComponent(ctx context.Context, ap
 }
 
 func (c *applicationUsecaseImpl) UpdateComponent(ctx context.Context, app *model.Application, component *model.ApplicationComponent, req apisv1.UpdateApplicationComponentRequest) (*apisv1.ComponentBase, error) {
+	// 将请求参数写到component信息中
 	if req.Alias != nil {
 		component.Alias = *req.Alias
 	}
@@ -1041,15 +1043,21 @@ func (c *applicationUsecaseImpl) UpdateComponent(ctx context.Context, app *model
 		component.Labels = *req.Labels
 	}
 	if req.Properties != nil {
+		// 将json字符串转换为json对象
 		properties, err := model.NewJSONStructByString(*req.Properties)
 		if err != nil {
 			return nil, bcode.ErrInvalidProperties
 		}
 		component.Properties = properties
+		// 将对象转换为unit8 切片，然后通过string方法将unit8切片转换为字符串
+		componentJsonString, err := json.Marshal(component)
+		log.Logger.Info("更新component配置【配置信息】：%s", string(componentJsonString))
 	}
+	// 更新组件信息到configmap
 	if err := c.ds.Put(ctx, component); err != nil {
 		return nil, err
 	}
+	// 将component解析成返回体
 	return converComponentModelToBase(component), nil
 }
 
@@ -1238,6 +1246,7 @@ func (c *applicationUsecaseImpl) UpdatePolicy(ctx context.Context, app *model.Ap
 	}, nil
 }
 
+// CreateApplicationTrait 创建一个应用的trait信息
 func (c *applicationUsecaseImpl) CreateApplicationTrait(ctx context.Context, app *model.Application, component *model.ApplicationComponent, req apisv1.CreateApplicationTraitRequest) (*apisv1.ApplicationTrait, error) {
 	var comp = model.ApplicationComponent{
 		AppPrimaryKey: app.PrimaryKey(),
@@ -1246,6 +1255,7 @@ func (c *applicationUsecaseImpl) CreateApplicationTrait(ctx context.Context, app
 	if err := c.ds.Get(ctx, &comp); err != nil {
 		return nil, err
 	}
+	// 校验trait是否存在，同一种类型trait只能添加一个
 	for _, trait := range comp.Traits {
 		if trait.Type == req.Type {
 			return nil, bcode.ErrTraitAlreadyExist
@@ -1285,25 +1295,34 @@ func (c *applicationUsecaseImpl) DeleteApplicationTrait(ctx context.Context, app
 }
 
 func (c *applicationUsecaseImpl) UpdateApplicationTrait(ctx context.Context, app *model.Application, component *model.ApplicationComponent, traitType string, req apisv1.UpdateApplicationTraitRequest) (*apisv1.ApplicationTrait, error) {
+	// 应用组件信息
 	var comp = model.ApplicationComponent{
 		AppPrimaryKey: app.PrimaryKey(),
 		Name:          component.Name,
 	}
+	// 获取组件信息
 	if err := c.ds.Get(ctx, &comp); err != nil {
 		return nil, err
 	}
+	// 遍历目前component中已有的trait特性
 	for i, trait := range comp.Traits {
+		// 匹配到后更新数据
 		if trait.Type == traitType {
+			// 解析内容后回填信息
 			properties, err := model.NewJSONStructByString(req.Properties)
 			if err != nil {
 				log.Logger.Errorf("update trait failure,%s", err.Error())
 				return nil, bcode.ErrInvalidProperties
 			}
+			// 新trait信息
 			updatedTrait := model.ApplicationTrait{CreateTime: trait.CreateTime, UpdateTime: time.Now(), Properties: properties, Type: traitType, Alias: req.Alias, Description: req.Description}
+			// 更新trait信息
 			comp.Traits[i] = updatedTrait
+			// 持久化库
 			if err := c.ds.Put(ctx, &comp); err != nil {
 				return nil, err
 			}
+			// 返回修改后trait信息
 			return &apisv1.ApplicationTrait{Type: trait.Type, Properties: properties,
 				Alias: updatedTrait.Alias, Description: updatedTrait.Description, CreateTime: updatedTrait.CreateTime, UpdateTime: updatedTrait.UpdateTime}, nil
 		}
