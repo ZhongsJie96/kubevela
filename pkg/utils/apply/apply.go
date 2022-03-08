@@ -109,6 +109,7 @@ func loggingApply(msg string, desired client.Object) {
 
 // Apply applies new state to an object or create it if not exist
 func (a *APIApplicator) Apply(ctx context.Context, desired client.Object, ao ...ApplyOption) error {
+	// 计算出哈希值，同时给desired打上标签
 	_, err := generateRenderHash(desired)
 	if err != nil {
 		return err
@@ -144,6 +145,7 @@ func generateRenderHash(desired client.Object) (string, error) {
 	if desired == nil {
 		return "", nil
 	}
+	// 计算出k8s资源 哈希值
 	desiredHash, err := utils.ComputeSpecHash(desired)
 	if err != nil {
 		return "", errors.Wrap(err, "compute desired hash")

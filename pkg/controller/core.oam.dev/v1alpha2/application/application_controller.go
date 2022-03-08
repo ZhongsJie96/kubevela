@@ -82,18 +82,18 @@ var (
 type Reconciler struct {
 	client.Client
 	dm       discoverymapper.DiscoveryMapper
-	pd       *packages.PackageDiscover
+	pd       *packages.PackageDiscover // CUE包加载发现
 	Scheme   *runtime.Scheme
-	Recorder event.Recorder
+	Recorder event.Recorder // 记录K8s事件
 	options
 }
 
 type options struct {
 	appRevisionLimit     int
-	concurrentReconciles int
-	disableStatusUpdate  bool
+	concurrentReconciles int  // 并发
+	disableStatusUpdate  bool // 状态更新
 	ignoreAppNoCtrlReq   bool
-	controllerVersion    string
+	controllerVersion    string // 控制器版本
 }
 
 // +kubebuilder:rbac:groups=core.oam.dev,resources=applications,verbs=get;list;watch;create;update;patch;delete
@@ -103,9 +103,11 @@ type options struct {
 // nolint:gocyclo
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
+	// 取消此上下文将释放与其关联的资源 (三分钟)
 	ctx, cancel := context.WithTimeout(ctx, common2.ReconcileTimeout)
 	defer cancel()
 
+	// 监控使用的context 跟踪reconcile信息
 	logCtx := monitorContext.NewTraceContext(ctx, "").AddTag("application", req.String(), "controller", "application")
 	logCtx.Info("Start reconcile application")
 	defer logCtx.Commit("End reconcile application")
@@ -120,6 +122,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return r.result(client.IgnoreNotFound(err)).ret()
 	}
 
+	// 检测控制器版本
 	if !r.matchControllerRequirement(app) {
 		logCtx.Info("skip app: not match the controller requirement of app")
 		return ctrl.Result{}, nil
@@ -129,6 +132,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	defer timeReporter()
 
 	logCtx.AddTag("resource_version", app.ResourceVersion).AddTag("generation", app.Generation)
+	// 获取context的命名空间信息，如果没有的话会使用默认命名空间信息
 	ctx = oamutil.SetNamespaceInCtx(ctx, app.Namespace)
 	logCtx.SetContext(ctx)
 	if annotations := app.GetAnnotations(); annotations == nil || annotations[oam.AnnotationKubeVelaVersion] == "" {
@@ -136,7 +140,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 	logCtx.AddTag("publish_version", app.GetAnnotations()[oam.AnnotationKubeVelaVersion])
 
+	// appFile的解析器
 	appParser := appfile.NewApplicationParser(r.Client, r.dm, r.pd)
+	// 添加resourceTrackers等内容
 	handler, err := NewAppHandler(logCtx, r, app, appParser)
 	if err != nil {
 		return r.endWithNegativeCondition(logCtx, app, condition.ReconcileError(err), common.ApplicationStarting)
@@ -152,12 +158,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return result, nil
 	}
 
+	// 解析器生成AppFile
 	appFile, err := appParser.GenerateAppFile(logCtx, app)
 	if err != nil {
 		r.Recorder.Event(app, event.Warning(velatypes.ReasonFailedParse, err))
 		return r.endWithNegativeCondition(logCtx, app, condition.ErrorCondition("Parsed", err), common.ApplicationRendering)
 	}
+	// 设置应用状态
 	app.Status.SetConditions(condition.ReadyCondition("Parsed"))
+	// 记录K8s事件
 	r.Recorder.Event(app, event.Normal(velatypes.ReasonParsed, velatypes.MessageParsed))
 
 	if err := handler.PrepareCurrentAppRevision(logCtx, appFile); err != nil {
@@ -209,6 +218,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	app.Status.SetConditions(condition.ReadyCondition(common.RenderCondition.String()))
 	r.Recorder.Event(app, event.Normal(velatypes.ReasonRendered, velatypes.MessageRendered))
 	wf := workflow.NewWorkflow(app, r.Client, appFile.WorkflowMode)
+	// 执行workflow step
 	workflowState, err := wf.ExecuteSteps(logCtx.Fork("workflow"), handler.currentAppRev, steps)
 	if err != nil {
 		logCtx.Error(err, "[handle workflow]")
@@ -217,6 +227,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	handler.addServiceStatus(false, app.Status.Services...)
+	// 记录apply的资源信息
 	handler.addAppliedResource(true, app.Status.AppliedResources...)
 	app.Status.AppliedResources = handler.appliedResources
 	app.Status.Services = handler.services
@@ -259,6 +270,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	var phase = common.ApplicationRunning
+	// 没有健康检查策略同时不是健康状态，将置为unhealthy状态
 	if !hasHealthCheckPolicy(appFile.PolicyWorkloads) {
 		app.Status.Services = handler.services
 		if !isHealthy(handler.services) {
@@ -271,6 +283,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		r.Recorder.Event(app, event.Warning(velatypes.ReasonFailedStateKeep, err))
 		app.Status.SetConditions(condition.ErrorCondition("StateKeep", err))
 	}
+	// 垃圾回收
 	if err := garbageCollection(logCtx, handler); err != nil {
 		logCtx.Error(err, "Failed to run garbage collection")
 		r.Recorder.Event(app, event.Warning(velatypes.ReasonFailedGC, err))
@@ -287,6 +300,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	return r.gcResourceTrackers(logCtx, handler, phase, true)
 }
 
+// 回收resourceTrackers
 func (r *Reconciler) gcResourceTrackers(logCtx monitorContext.Context, handler *AppHandler, phase common.ApplicationPhase, gcOutdated bool) (ctrl.Result, error) {
 	subCtx := logCtx.Fork("gc_resourceTrackers", monitorContext.DurationMetric(func(v float64) {
 		metrics.GCResourceTrackersDurationHistogram.WithLabelValues("-").Observe(v)

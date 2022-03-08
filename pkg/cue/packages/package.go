@@ -48,7 +48,7 @@ const (
 	ParseJSONSchemaErr ParseErrType = "parse json schema of k8s crds error"
 )
 
-// PackageDiscover defines the inner CUE packages loaded from K8s cluster
+// PackageDiscover defines the inner CUE packages loaded from K8s cluster   定义了一个内部CUE包加载
 type PackageDiscover struct {
 	velaBuiltinPackages []*build.Instance
 	pkgKinds            map[string][]VersionKind

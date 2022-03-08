@@ -660,6 +660,7 @@ func (c *applicationUsecaseImpl) Deploy(ctx context.Context, app *model.Applicat
 	// TODO: rollback to handle all the error case
 	// step1: Render oam application
 	version := utils.GenerateVersion("")
+	// 渲染出整个app信息（apiServer）
 	oamApp, err := c.renderOAMApplication(ctx, app, req.WorkflowName, version)
 	if err != nil {
 		return nil, err
@@ -673,6 +674,7 @@ func (c *applicationUsecaseImpl) Deploy(ctx context.Context, app *model.Applicat
 
 	// step2: check and create deploy event
 	if !req.Force {
+		// 非强制部署的时候，将校验上一次发布记录的状态信息
 		var lastVersion = model.ApplicationRevision{
 			AppPrimaryKey: app.PrimaryKey(),
 			EnvName:       workflow.EnvName,
@@ -704,6 +706,7 @@ func (c *applicationUsecaseImpl) Deploy(ctx context.Context, app *model.Applicat
 		}
 	}
 
+	// 生成一次发布记录
 	var appRevision = &model.ApplicationRevision{
 		AppPrimaryKey:  app.PrimaryKey(),
 		Version:        version,
@@ -730,7 +733,7 @@ func (c *applicationUsecaseImpl) Deploy(ctx context.Context, app *model.Applicat
 			return nil, bcode.ErrCreateNamespace
 		}
 	}
-	// step4: apply to controller cluster
+	// step4: apply to controller cluster 部署apply， Applicator todo zsj 了解apply原理知识
 	err = c.apply.Apply(ctx, oamApp)
 	if err != nil {
 		appRevision.Status = model.RevisionStatusFail
@@ -742,7 +745,7 @@ func (c *applicationUsecaseImpl) Deploy(ctx context.Context, app *model.Applicat
 		log.Logger.Errorf("deploy app %s failure %s", app.PrimaryKey(), err.Error())
 		return nil, bcode.ErrDeployApplyFail
 	}
-
+	// 创建工作流记录并将工作流状态置为running
 	// step5: create workflow record
 	if err := c.workflowUsecase.CreateWorkflowRecord(ctx, app, oamApp, workflow); err != nil {
 		log.Logger.Warnf("create workflow record failure %s", err.Error())
@@ -754,11 +757,13 @@ func (c *applicationUsecaseImpl) Deploy(ctx context.Context, app *model.Applicat
 		log.Logger.Warnf("update app revision failure %s", err.Error())
 	}
 
+	// 返回部署响应
 	return &apisv1.ApplicationDeployResponse{
 		ApplicationRevisionBase: c.converRevisionModelToBase(appRevision),
 	}, nil
 }
 
+// 拼装appFile信息
 func (c *applicationUsecaseImpl) renderOAMApplication(ctx context.Context, appModel *model.Application, reqWorkflowName, version string) (*v1beta1.Application, error) {
 	// Priority 1 uses the requested workflow as release .
 	// Priority 2 uses the default workflow as release .
@@ -778,16 +783,20 @@ func (c *applicationUsecaseImpl) renderOAMApplication(ctx context.Context, appMo
 	if workflow == nil || workflow.EnvName == "" {
 		return nil, bcode.ErrWorkflowNotExist
 	}
+	// 获取应用env信息
 	env, err := c.envUsecase.GetEnv(ctx, workflow.EnvName)
 	if err != nil {
 		return nil, err
 	}
+	// 复制应用模型label信息
 	labels := make(map[string]string)
 	for key, value := range appModel.Labels {
 		labels[key] = value
 	}
+	// 添加应用名label信息
 	labels[oam.AnnotationAppName] = appModel.Name
 
+	// 创建应用基本信息
 	var app = &v1beta1.Application{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Application",
@@ -797,6 +806,7 @@ func (c *applicationUsecaseImpl) renderOAMApplication(ctx context.Context, appMo
 			Name:      appModel.Name,
 			Namespace: env.Namespace,
 			Labels:    labels,
+			// vela注解
 			Annotations: map[string]string{
 				oam.AnnotationDeployVersion: version,
 				// publish version is the identifier of workflow record
@@ -806,6 +816,7 @@ func (c *applicationUsecaseImpl) renderOAMApplication(ctx context.Context, appMo
 			},
 		},
 	}
+	// 获取原始应用信息后添加资源版本信息
 	originalApp := &v1beta1.Application{}
 	if err := c.kubeClient.Get(ctx, types.NamespacedName{
 		Name:      appModel.Name,
@@ -813,7 +824,7 @@ func (c *applicationUsecaseImpl) renderOAMApplication(ctx context.Context, appMo
 	}, originalApp); err == nil {
 		app.ResourceVersion = originalApp.ResourceVersion
 	}
-
+	// 应用组件信息
 	var component = model.ApplicationComponent{
 		AppPrimaryKey: appModel.PrimaryKey(),
 	}
@@ -825,6 +836,7 @@ func (c *applicationUsecaseImpl) renderOAMApplication(ctx context.Context, appMo
 		return nil, bcode.ErrNoComponent
 	}
 
+	// 应用策略信息
 	var policy = model.ApplicationPolicy{
 		AppPrimaryKey: appModel.PrimaryKey(),
 	}
@@ -834,10 +846,12 @@ func (c *applicationUsecaseImpl) renderOAMApplication(ctx context.Context, appMo
 	}
 	var componentModels []*model.ApplicationComponent
 	for _, entity := range components {
+		// 添加现有组件信息（应用下组件）
 		component := entity.(*model.ApplicationComponent)
 		componentModels = append(componentModels, component)
 		var traits []common.ApplicationTrait
 		for _, trait := range component.Traits {
+			// 遍历组件trait信息，后解析trait中properties
 			aTrait := common.ApplicationTrait{
 				Type: trait.Type,
 			}
@@ -846,6 +860,7 @@ func (c *applicationUsecaseImpl) renderOAMApplication(ctx context.Context, appMo
 			}
 			traits = append(traits, aTrait)
 		}
+		// 解析应用组件信息
 		bc := common.ApplicationComponent{
 			Name:             component.Name,
 			Type:             component.Type,
@@ -857,6 +872,7 @@ func (c *applicationUsecaseImpl) renderOAMApplication(ctx context.Context, appMo
 			Scopes:           component.Scopes,
 			Properties:       component.Properties.RawExtension(),
 		}
+		// todo zsj 为什么需要进行二次扩展
 		if component.Properties != nil {
 			bc.Properties = component.Properties.RawExtension()
 		}
@@ -881,6 +897,7 @@ func (c *applicationUsecaseImpl) renderOAMApplication(ctx context.Context, appMo
 		}
 		app.Spec.Policies = append(app.Spec.Policies, envPolicy)
 	}
+	// workflow
 	app.Annotations[oam.AnnotationWorkflowName] = workflow.Name
 	var steps []v1beta1.WorkflowStep
 	for _, step := range workflow.Steps {

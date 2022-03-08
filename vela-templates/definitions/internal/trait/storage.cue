@@ -4,8 +4,8 @@ storage: {
 	labels: {}
 	description: "Add storages on K8s pod for your workload which follows the pod spec in path 'spec.template'."
 	attributes: {
-		appliesToWorkloads: ["deployments.apps"]
-		podDisruptive: true
+		appliesToWorkloads: ["deployments.apps"] //只能附加到Kubernetes Deployments工作负载类型。
+		podDisruptive: true // 当更新的配置的时候会影响Pod重启
 	}
 }
 template: {
@@ -69,7 +69,7 @@ template: {
 			}
 		},
 	] | []
-
+// cm 挂载到卷
 	configMapVolumeMountsList: *[
 					for v in parameter.configMap {
 			{
@@ -78,7 +78,7 @@ template: {
 			}
 		},
 	] | []
-
+// cm应用到环境变量
 	configMapEnvMountsList: *[
 				for v in parameter.configMap if v.mountToEnv != _|_ {
 			{
@@ -90,7 +90,7 @@ template: {
 			}
 		},
 	] | []
-
+// 保密字段挂载卷
 	secretVolumeMountsList: *[
 				for v in parameter.secret {
 			{
@@ -99,7 +99,7 @@ template: {
 			}
 		},
 	] | []
-
+// 保密字典应用到环境变量
 	secretEnvMountsList: *[
 				for v in parameter.secret if v.mountToEnv != _|_ {
 			{
@@ -187,7 +187,8 @@ template: {
 			}
 		}
 
-		for v in parameter.configMap {
+	// 附属资源configmap
+ 		for v in parameter.configMap {
 			if v.mountOnly == false {
 				"configmap-\(v.name)": {
 					apiVersion: "v1"
@@ -255,15 +256,15 @@ template: {
 		// +usage=Declare config map type storage
 		configMap?: [...{
 			name:      string
-			mountOnly: *false | bool
+			mountOnly: *false | bool   // 是否只挂载
 			mountToEnv?: {
 				envName:      string
 				configMapKey: string
 			}
 			mountPath:   string
 			defaultMode: *420 | int
-			readOnly:    *false | bool
-			data?: {...}
+			readOnly:    *false | bool   // 是否只读
+			data?: {...}  // 数据
 			items?: [...{
 				key:  string
 				path: string
@@ -282,8 +283,8 @@ template: {
 			mountPath:   string
 			defaultMode: *420 | int
 			readOnly:    *false | bool
-			stringData?: {...}
-			data?: {...}
+			stringData?: {...}   // 字符串型data数据
+			data?: {...}  // 需要存储md5值
 			items?: [...{
 				key:  string
 				path: string

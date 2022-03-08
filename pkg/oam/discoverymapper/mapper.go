@@ -28,7 +28,7 @@ import (
 	"k8s.io/client-go/restmapper"
 )
 
-// DiscoveryMapper is a interface for refresh and discovery resources from GVK.
+// DiscoveryMapper is a interface for refresh and discovery resources from GVK.  刷新和发现资源Group version kinds
 type DiscoveryMapper interface {
 	GetMapper() (meta.RESTMapper, error)
 	Refresh() (meta.RESTMapper, error)

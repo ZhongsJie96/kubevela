@@ -72,7 +72,7 @@ type Workflow struct {
 	Steps []WorkflowStep `json:"steps,omitempty"`
 }
 
-// ApplicationSpec is the spec of Application
+// ApplicationSpec is the spec of Application  应用资源包含了组件信息，应用Policy以及Workflow信息
 type ApplicationSpec struct {
 	Components []common.ApplicationComponent `json:"components"`
 

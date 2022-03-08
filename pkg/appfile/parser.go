@@ -53,8 +53,8 @@ func (fn TemplateLoaderFn) LoadTemplate(ctx context.Context, dm discoverymapper.
 type Parser struct {
 	client     client.Client
 	dm         discoverymapper.DiscoveryMapper
-	pd         *packages.PackageDiscover
-	tmplLoader TemplateLoaderFn
+	pd         *packages.PackageDiscover // 包发现
+	tmplLoader TemplateLoaderFn          // 模板加载
 }
 
 // NewApplicationParser create appfile parser
@@ -77,7 +77,7 @@ func NewDryRunApplicationParser(cli client.Client, dm discoverymapper.DiscoveryM
 	}
 }
 
-// GenerateAppFile converts an application to an Appfile
+// GenerateAppFile converts an application to an Appfile  生成AppFile信息
 func (p *Parser) GenerateAppFile(ctx context.Context, app *v1beta1.Application) (*Appfile, error) {
 	if ctx, ok := ctx.(monitorContext.Context); ok {
 		subCtx := ctx.Fork("generate-app-file", monitorContext.DurationMetric(func(v float64) {
@@ -85,10 +85,13 @@ func (p *Parser) GenerateAppFile(ctx context.Context, app *v1beta1.Application) 
 		}))
 		defer subCtx.Commit("finish generate appFile")
 	}
+	// 命名空间以及应用名
 	ns := app.Namespace
 	appName := app.Name
 
+	// 生成appFile定义以及相关的def定义
 	appfile := p.newAppfile(appName, ns, app)
+	// 生成发布记录
 	if app.Status.LatestRevision != nil {
 		appfile.AppRevisionName = app.Status.LatestRevision.Name
 	}
@@ -102,11 +105,12 @@ func (p *Parser) GenerateAppFile(ctx context.Context, app *v1beta1.Application) 
 
 		wds = append(wds, wd)
 	}
+	// 解析appFile中的workloads列表
 	appfile.Workloads = wds
 	appfile.Components = app.Spec.Components
 
 	var err error
-	// parse workflow steps
+	// parse workflow steps 流的工作模式
 	appfile.WorkflowMode = common.WorkflowModeDAG
 	if wfSpec := app.Spec.Workflow; wfSpec != nil && len(wfSpec.Steps) > 0 {
 		appfile.WorkflowMode = common.WorkflowModeStep

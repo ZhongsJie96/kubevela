@@ -221,6 +221,7 @@ func Install(p providers.Providers, cli client.Client, apply Dispatcher, deleter
 		delete: deleter,
 		cli:    cli,
 	}
+	// todo 注册一些Providers
 	p.Register(ProviderName, map[string]providers.Handler{
 		"apply":             prd.Apply,
 		"apply-in-parallel": prd.ApplyInParallel,

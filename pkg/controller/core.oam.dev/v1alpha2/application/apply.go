@@ -63,6 +63,7 @@ func NewAppHandler(ctx context.Context, r *Reconciler, app *v1beta1.Application,
 		}))
 		defer subCtx.Commit("finish create appHandler")
 	}
+	// 创建resource Keeper
 	resourceHandler, err := resourcekeeper.NewResourceKeeper(ctx, r.Client, app)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create resourceKeeper")

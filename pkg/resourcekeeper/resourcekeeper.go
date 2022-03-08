@@ -116,9 +116,11 @@ func NewResourceKeeper(ctx context.Context, cli client.Client, app *v1beta1.Appl
 		applicator: apply.NewAPIApplicator(cli),
 		cache:      newResourceCache(cli),
 	}
+	// 加载资源Trackers
 	if err = h.loadResourceTrackers(ctx); err != nil {
 		return nil, errors.Wrapf(err, "failed to load resourcetrackers")
 	}
+	// 解析应用资源策略
 	if err = h.parseApplicationResourcePolicy(); err != nil {
 		return nil, errors.Wrapf(err, "failed to parse resource policy")
 	}

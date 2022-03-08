@@ -152,6 +152,7 @@ func (c *applicationWebService) GetWebService() *restful.WebService {
 		Returns(400, "", bcode.Bcode{}).
 		Writes(apis.ApplicationTemplateBase{}))
 
+	// 部署应用信息
 	ws.Route(ws.POST("/{name}/deploy").To(c.deployApplication).
 		Doc("deploy or upgrade the application").
 		Metadata(restfulspec.KeyOpenAPITags, tags).
@@ -675,6 +676,7 @@ func (c *applicationWebService) publishApplicationTemplate(req *restful.Request,
 
 // deployApplication TODO: return event model
 func (c *applicationWebService) deployApplication(req *restful.Request, res *restful.Response) {
+	// 获取应用信息
 	app := req.Request.Context().Value(&apis.CtxKeyApplication).(*model.Application)
 	// Verify the validity of parameters
 	var createReq apis.ApplicationDeployRequest

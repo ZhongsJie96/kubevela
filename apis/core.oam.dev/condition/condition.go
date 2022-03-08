@@ -62,7 +62,7 @@ const (
 	ReasonReconcileError   ConditionReason = "ReconcileError"
 )
 
-// A Condition that may apply to a resource.
+// A Condition that may apply to a resource.  可以适用于资源的条件
 type Condition struct {
 	// Type of this condition. At most one of each condition type may apply to
 	// a resource at any point in time.
