@@ -72,6 +72,7 @@ func Init(ds datastore.DataStore, addonCacheTime time.Duration) {
 	applicationUsecase := usecase.NewApplicationUsecase(ds, workflowUsecase, envBindingUsecase, envUsecase, targetUsecase, definitionUsecase, projectUsecase)
 	webhookUsecase := usecase.NewWebhookUsecase(ds, applicationUsecase)
 	systemInfoUsecase := usecase.NewSystemInfoUsecase(ds)
+	traitUsercase := usecase.NewTraitUsecase(ds)
 
 	// init for default values
 
@@ -79,6 +80,8 @@ func Init(ds datastore.DataStore, addonCacheTime time.Duration) {
 	RegisterWebService(NewApplicationWebService(applicationUsecase, envBindingUsecase, workflowUsecase))
 	RegisterWebService(NewProjectWebService(projectUsecase))
 	RegisterWebService(NewEnvWebService(envUsecase, applicationUsecase))
+	// 注册wbservice服务 (web开发流程，创建各个实现，注册webservice到框架中）
+	RegisterWebService(NewTraitService(traitUsercase, applicationUsecase))
 
 	// Extension
 	RegisterWebService(NewDefinitionWebservice(definitionUsecase))
