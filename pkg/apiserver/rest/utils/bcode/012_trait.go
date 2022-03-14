@@ -13,3 +13,5 @@ var ErrStorageTraitTypeNotSupport = NewBcode(400, 12004, "storage trait type not
 var ErrStorageTraitKeyIsExists = NewBcode(400, 12005, "storage trait data is exists")
 
 var ErrTypeAssert = NewBcode(400, 12006, "type assert err")
+
+var ErrStorageDataType = NewBcode(400, 12007, "storage trait data type err")

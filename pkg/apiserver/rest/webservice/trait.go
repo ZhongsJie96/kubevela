@@ -127,7 +127,7 @@ func (t *traitService) componentCheckFilter(req *restful.Request, res *restful.R
 
 func (t *traitService) deleteComponentStorageItem(req *restful.Request, res *restful.Response) {
 	app := req.Request.Context().Value(&apis.CtxKeyApplication).(*model.Application)
-	traitDetail, err := t.traitUsecase.DeleteComponentStorageItem(req.Request.Context(), app,
+	err := t.traitUsecase.DeleteComponentStorageItem(req.Request.Context(), app,
 		&model.ApplicationComponent{Name: req.PathParameter("compName")},
 		&apisCmb.StorageItemOptions{
 			Type:      req.QueryParameter("type"),
@@ -138,7 +138,7 @@ func (t *traitService) deleteComponentStorageItem(req *restful.Request, res *res
 	if err != nil {
 		bcode.ReturnError(req, res, err)
 	}
-	if err := res.WriteEntity(traitDetail); err != nil {
+	if err := res.WriteEntity(apis.EmptyResponse{}); err != nil {
 		bcode.ReturnError(req, res, err)
 		return
 	}

@@ -29,7 +29,7 @@ type StorageItemResponse struct {
 
 type StorageItemOptions struct {
 	Type      string `json:"type"`
-	Name      string `json:"name"`
+	Name      string `json:"name,omitempty"`
 	MountPath string `json:"mountPath"`
 	DataKey   string `json:"dataKey"`
 }

@@ -2,12 +2,15 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/oam-dev/kubevela/pkg/apiserver/clients"
 	"github.com/oam-dev/kubevela/pkg/apiserver/datastore"
 	"github.com/oam-dev/kubevela/pkg/apiserver/log"
 	"github.com/oam-dev/kubevela/pkg/apiserver/model"
 	apisCmb "github.com/oam-dev/kubevela/pkg/apiserver/rest/apis/cmbv1"
 	"github.com/oam-dev/kubevela/pkg/apiserver/rest/utils/bcode"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 	"time"
@@ -20,7 +23,7 @@ type traitUsecaseImpl struct {
 
 type TraitUsecase interface {
 	DetailComponentStorageItem(ctx context.Context, app *model.Application, component *model.ApplicationComponent, itemOptions *apisCmb.StorageItemOptions) (*apisCmb.StorageItemResponse, error)
-	DeleteComponentStorageItem(ctx context.Context, app *model.Application, component *model.ApplicationComponent, itemOptions *apisCmb.StorageItemOptions) (*model.ApplicationTrait, error)
+	DeleteComponentStorageItem(ctx context.Context, app *model.Application, component *model.ApplicationComponent, itemOptions *apisCmb.StorageItemOptions) error
 	UpdateComponentStorageItem(ctx context.Context, app *model.Application, component *model.ApplicationComponent, updateReq apisCmb.StorageItemRequest) (*model.ApplicationTrait, error)
 	CreateComponentStorageItem(ctx context.Context, app *model.Application, component *model.ApplicationComponent, creatReq apisCmb.StorageItemRequest) (*model.ApplicationTrait, error)
 }
@@ -212,70 +215,62 @@ func (t *traitUsecaseImpl) UpdateComponentStorageItem(ctx context.Context, app *
 	return nil, bcode.ErrStorageTraitNotExists
 }
 
-func (t *traitUsecaseImpl) DeleteComponentStorageItem(ctx context.Context, app *model.Application, component *model.ApplicationComponent, itemOptions *apisCmb.StorageItemOptions) (*model.ApplicationTrait, error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Logger.Info("DeleteComponentStorageItem ----> recover: %s", r)
-		}
-	}()
+func (t *traitUsecaseImpl) DeleteComponentStorageItem(ctx context.Context, app *model.Application, component *model.ApplicationComponent, itemOptions *apisCmb.StorageItemOptions) error {
 	var comp = model.ApplicationComponent{
 		AppPrimaryKey: app.PrimaryKey(),
 		Name:          component.Name,
 	}
 	if err := t.ds.Get(ctx, &comp); err != nil {
-		return nil, err
+		return err
 	}
 	for _, trait := range comp.Traits {
 		if strings.Compare(trait.Type, apisCmb.KeyStorage) == 0 {
 			properties := *trait.Properties
-			typeProperties, ok := properties[itemOptions.Type]
-			if !ok {
-				return nil, bcode.ErrStorageTraitTypeNotExists
+			// 1. 找到对应类型的属性配置
+			propJSON, err := json.Marshal(properties)
+			if err != nil {
+				return err
+
 			}
-			for idx, item := range typeProperties.([]interface{}) {
-				mountPath, ok := item.(map[string]interface{})[apisCmb.KeyMountPath]
-				if !ok {
-					return nil, bcode.ErrStorageMountPathNotExists
-				}
-				if mountPath == itemOptions.MountPath {
-					itemDataTemp, ok := item.(map[string]interface{})[apisCmb.KeyData]
-					if !ok {
-						return nil, bcode.ErrStorageDataNotExists
-					}
-					itemDataMap := itemDataTemp.(map[string]interface{})
-					if _, ok := itemDataMap[itemOptions.DataKey]; ok {
-						delete(itemDataMap, itemOptions.DataKey)
-						if len(itemDataMap) == 0 {
-							typeProperties = append(typeProperties.([]interface{})[:idx], typeProperties.([]interface{})[idx+1:])
-						}
-						trait.UpdateTime = time.Now()
-						if err := t.ds.Put(ctx, &comp); err != nil {
-							return nil, err
-						}
-						return &model.ApplicationTrait{
-							Type:        trait.Type,
-							Properties:  trait.Properties,
-							Alias:       trait.Alias,
-							Description: trait.Description,
-							CreateTime:  trait.CreateTime,
-							UpdateTime:  trait.UpdateTime}, nil
-					}
-					return nil, bcode.ErrStorageDataNotExists
-				}
+			jsonFieldPath := apisCmb.KeyConfigMap + ".#(" + apisCmb.KeyMountPath +
+				"==\"" + itemOptions.MountPath + "\").data"
+			dataSliceRes := gjson.Get(string(propJSON), jsonFieldPath)
+			if !dataSliceRes.Exists() {
+				return bcode.ErrStorageDataNotExists
 			}
-			return nil, bcode.ErrStorageMountPathNotExists
+			switch dataSliceRes.Type {
+			case gjson.JSON:
+				dataMap := make(map[string]string)
+				err := json.Unmarshal([]byte(dataSliceRes.Raw), &dataMap)
+				if err != nil {
+					return err
+				}
+				delete(dataMap, itemOptions.DataKey)
+				dataMapJSON, err := json.Marshal(dataMap)
+				if err != nil {
+					return err
+				}
+				value, _ := sjson.Set(string(propJSON), jsonFieldPath, dataMapJSON)
+				var data *model.JSONStruct
+				if err := json.Unmarshal([]byte(value), &data); err != nil {
+					return err
+				}
+				trait.Properties = data
+				trait.UpdateTime = time.Now()
+				if err := t.ds.Put(ctx, &comp); err != nil {
+					return err
+				}
+				return nil
+			default:
+				return bcode.ErrStorageDataType
+			}
 		}
 	}
-	return nil, bcode.ErrStorageTraitNotExists
+	return bcode.ErrStorageTraitNotExists
 
 }
 
 func (t *traitUsecaseImpl) DetailComponentStorageItem(ctx context.Context, app *model.Application, component *model.ApplicationComponent, itemOptions *apisCmb.StorageItemOptions) (*apisCmb.StorageItemResponse, error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Logger.Info("DetailComponentStorageItem ----> recover: %s", r)
-		}
-	}()
 	var comp = model.ApplicationComponent{
 		AppPrimaryKey: app.PrimaryKey(),
 		Name:          component.Name,
@@ -287,42 +282,33 @@ func (t *traitUsecaseImpl) DetailComponentStorageItem(ctx context.Context, app *
 		if strings.Compare(trait.Type, apisCmb.KeyStorage) == 0 {
 			properties := *trait.Properties
 			// 1. 找到对应类型的属性配置
-			typeProperties, ok := properties[itemOptions.Type]
-			if !ok {
-				return nil, bcode.ErrStorageTraitTypeNotExists
-			}
-			// 2. 根据mountPath查找属性中具体值内容
-			var itemData map[string]interface{}
-			for _, item := range typeProperties.([]interface{}) {
-				// 2.1 对比mountPath确定同一个资源
-				mountPath, ok := item.(map[string]interface{})[apisCmb.KeyMountPath]
-				if !ok {
-					return nil, bcode.ErrStorageMountPathNotExists
-				}
-				if mountPath == itemOptions.MountPath {
-					itemDataTemp, ok := item.(map[string]interface{})[apisCmb.KeyData]
-					if !ok {
-						return nil, bcode.ErrStorageDataNotExists
-					}
-					itemData = itemDataTemp.(map[string]interface{})
-				}
-			}
-			if itemData == nil {
-				return nil, bcode.ErrStorageMountPathNotExists
-			}
-			// 3. 根据Key查找到确定条目
+			propJSON, err := json.Marshal(properties)
+			if err != nil {
+				return nil, err
 
-			if value, ok := itemData[itemOptions.DataKey]; ok {
+			}
+			// gjson key中带有.号处理
+			mountPathParam := strings.ReplaceAll(itemOptions.MountPath, ".", "\\.")
+			dataKeyParam := strings.ReplaceAll(itemOptions.DataKey, ".", "\\.")
+			jsonFieldPath := apisCmb.KeyConfigMap + ".#(" + apisCmb.KeyMountPath +
+				"==\"" + mountPathParam + "\").data." + dataKeyParam
+			dataRes := gjson.Get(string(propJSON), jsonFieldPath)
+			if !dataRes.Exists() {
+				return nil, bcode.ErrStorageDataNotExists
+			}
+			switch dataRes.Type {
+			case gjson.String:
 				return &apisCmb.StorageItemResponse{
 					Type:          itemOptions.Type,
 					ComponentName: comp.Name,
 					AppPrimaryKey: app.PrimaryKey(),
 					MountPath:     itemOptions.MountPath,
 					Key:           itemOptions.DataKey,
-					Value:         value.(string),
+					Value:         dataRes.Str,
 				}, nil
+			default:
+				return nil, bcode.ErrStorageDataType
 			}
-			return nil, bcode.ErrStorageDataNotExists
 		}
 	}
 	return nil, bcode.ErrStorageTraitNotExists
