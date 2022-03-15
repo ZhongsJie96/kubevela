@@ -82,6 +82,16 @@ func (t *traitService) GetWebService() *restful.WebService {
 		Returns(400, "", bcode.Bcode{}).
 		Writes(model.ApplicationTrait{}))
 
+	ws.Route(ws.GET("/storage/tree").To(t.getComponentStorageCMTree).
+		Filter(t.appCheckFilter).
+		Doc("获取组件存储CM 文件树").
+		Metadata(restfulspec.KeyOpenAPITags, tags).
+		Param(ws.PathParameter("appName", "应用名").DataType("string")).
+		Param(ws.PathParameter("compName", "组件名").DataType("string")).
+		Returns(200, "", apisCmb.MountFileTreeResponse{}).
+		Returns(400, "", bcode.Bcode{}).
+		Writes(apisCmb.MountFileTreeResponse{}))
+
 	return ws
 }
 
@@ -191,6 +201,19 @@ func (t *traitService) createComponentStorageItem(req *restful.Request, res *res
 		return
 	}
 	if err := res.WriteEntity(trait); err != nil {
+		bcode.ReturnError(req, res, err)
+		return
+	}
+}
+
+func (t *traitService) getComponentStorageCMTree(req *restful.Request, res *restful.Response) {
+	app := req.Request.Context().Value(&apis.CtxKeyApplication).(*model.Application)
+	mountFileTree, err := t.traitUsecase.GetComponentStorageCMTree(req.Request.Context(), app,
+		&model.ApplicationComponent{Name: req.PathParameter("compName")})
+	if err != nil {
+		bcode.ReturnError(req, res, err)
+	}
+	if err := res.WriteEntity(mountFileTree); err != nil {
 		bcode.ReturnError(req, res, err)
 		return
 	}

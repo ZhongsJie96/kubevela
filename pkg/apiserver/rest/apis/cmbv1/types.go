@@ -51,3 +51,22 @@ type StorageTraitCM struct {
 	DefaultMode int               `json:"defaultMode,omitempty"`
 	MountOnly   bool              `json:"mountOnly,omitempty"`
 }
+
+type MountFileInfo struct {
+	MountPath string `json:"mountPath"`
+	DataKey   string `json:"dataKey"`
+	URL       string `json:"url"`
+}
+type MountFileTreeNode struct {
+	Name          string               `json:"name"`
+	ParentPath    string               `json:"parentPath"`
+	URL           string               `json:"url"`
+	MountPath     string               `json:"mountPath"`
+	DataKey       string               `json:"dataKey"`
+	ChildrenNodes *[]MountFileTreeNode `json:"childrenNodes"`
+	IsFile        bool                 `json:"isFile"`
+}
+
+type MountFileTreeResponse struct {
+	NodeTree *[]MountFileTreeNode `json:"nodeTree"`
+}

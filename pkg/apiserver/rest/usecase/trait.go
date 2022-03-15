@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"encoding/json"
+	mapset "github.com/deckarep/golang-set"
 	"github.com/oam-dev/kubevela/pkg/apiserver/clients"
 	"github.com/oam-dev/kubevela/pkg/apiserver/datastore"
 	"github.com/oam-dev/kubevela/pkg/apiserver/log"
@@ -11,6 +12,7 @@ import (
 	"github.com/oam-dev/kubevela/pkg/apiserver/rest/utils/bcode"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"regexp"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 	"time"
@@ -26,6 +28,7 @@ type TraitUsecase interface {
 	DeleteComponentStorageItem(ctx context.Context, app *model.Application, component *model.ApplicationComponent, itemOptions *apisCmb.StorageItemOptions) error
 	UpdateComponentStorageItem(ctx context.Context, app *model.Application, component *model.ApplicationComponent, updateReq apisCmb.StorageItemRequest) (*model.ApplicationTrait, error)
 	CreateComponentStorageItem(ctx context.Context, app *model.Application, component *model.ApplicationComponent, creatReq apisCmb.StorageItemRequest) (*model.ApplicationTrait, error)
+	GetComponentStorageCMTree(ctx context.Context, app *model.Application, component *model.ApplicationComponent) (*apisCmb.MountFileTreeResponse, error)
 }
 
 // NewTraitUsecase new trait usecase 新建一个trait case
@@ -38,6 +41,171 @@ func NewTraitUsecase(ds datastore.DataStore) TraitUsecase {
 		ds:         ds,
 		kubeClient: kubeClient,
 	}
+}
+
+func (t *traitUsecaseImpl) GetComponentStorageCMTree(ctx context.Context, app *model.Application, component *model.ApplicationComponent) (*apisCmb.MountFileTreeResponse, error) {
+	var comp = model.ApplicationComponent{
+		AppPrimaryKey: app.PrimaryKey(),
+		Name:          component.Name,
+	}
+	if err := t.ds.Get(ctx, &comp); err != nil {
+		return nil, err
+	}
+	// 遍历
+	for _, trait := range comp.Traits {
+		// 获取storage Trait信息
+		if strings.Compare(trait.Type, apisCmb.KeyStorage) == 0 {
+			fileInfos, err := GetConfigMapFileInfos(trait.Properties)
+			if err != nil {
+				return nil, err
+			}
+			fileTree, err := GetConfigMapFileTree(fileInfos)
+			if err != nil {
+				return nil, err
+			}
+			return &apisCmb.MountFileTreeResponse{
+				NodeTree: &fileTree,
+			}, nil
+
+		}
+	}
+	return nil, nil
+}
+
+func GetConfigMapFileTree(fileInfos []apisCmb.MountFileInfo) ([]apisCmb.MountFileTreeNode, error) {
+	var fileTreeNodes []apisCmb.MountFileTreeNode
+	if len(fileInfos) > 0 {
+		nodeSet := mapset.NewSet()
+		for _, fileInfo := range fileInfos {
+			SplitPath(nodeSet, fileInfo)
+		}
+
+		for _, node := range nodeSet.ToSlice() {
+			treeNode, ok := node.(apisCmb.MountFileTreeNode)
+			if !ok {
+				return nil, bcode.ErrTypeAssert
+			}
+			if treeNode.ParentPath == "" {
+				fileTreeNodes = append(fileTreeNodes, generateChildNode(treeNode, nodeSet))
+			}
+		}
+	}
+	return fileTreeNodes, nil
+}
+
+func generateChildNode(node apisCmb.MountFileTreeNode, nodeSet mapset.Set) apisCmb.MountFileTreeNode {
+	if node.IsFile {
+		return node
+	}
+	slice := nodeSet.ToSlice()
+	for _, nodeItem := range slice {
+		treeNode := nodeItem.(apisCmb.MountFileTreeNode)
+		if treeNode.ParentPath == node.URL {
+			if node.ChildrenNodes == nil {
+				node.ChildrenNodes = &[]apisCmb.MountFileTreeNode{}
+			}
+			*node.ChildrenNodes = append(*node.ChildrenNodes, generateChildNode(treeNode, nodeSet))
+		}
+
+	}
+	return node
+}
+
+func SplitPath(nodeSet mapset.Set, fileInfo apisCmb.MountFileInfo) {
+	linuxPathReg := "^\\/(\\w+\\/?)+$"
+	// linux
+	if isLinuxPath, _ := regexp.MatchString(linuxPathReg, fileInfo.MountPath); isLinuxPath {
+		split := strings.Split(fileInfo.URL, "/")
+		url := ""
+		for idx, itemName := range split {
+			if idx != 0 && itemName == "" {
+				continue
+			}
+			node := apisCmb.MountFileTreeNode{
+				ParentPath: url,
+				Name:       itemName,
+				IsFile:     false,
+			}
+			if idx == 0 {
+				node.Name = "/" + itemName
+			} else {
+				node.Name = itemName
+			}
+			if strings.HasSuffix(url, "/") {
+				url += itemName
+			} else {
+				url += "/" + itemName
+			}
+			node.URL = url
+			if idx == len(split)-1 {
+				node.DataKey = fileInfo.DataKey
+				node.MountPath = fileInfo.MountPath
+				node.IsFile = true
+			}
+			nodeSet.Add(node)
+		}
+	} else {
+		//	windows
+		split := strings.Split(fileInfo.URL, "\\")
+		url := ""
+		for idx, itemName := range split {
+			node := apisCmb.MountFileTreeNode{
+				ParentPath: url,
+				Name:       itemName,
+				IsFile:     false,
+			}
+			if idx == 0 {
+				url += itemName
+			} else {
+				url += "\\" + itemName
+			}
+			node.URL = url
+			if idx == len(split)-1 {
+				node.DataKey = fileInfo.DataKey
+				node.MountPath = fileInfo.MountPath
+				node.IsFile = true
+			}
+			nodeSet.Add(node)
+		}
+	}
+}
+
+func GetConfigMapFileInfos(prop *model.JSONStruct) ([]apisCmb.MountFileInfo, error) {
+	properties := prop
+	propJSON, err := json.Marshal(properties)
+	if err != nil {
+		return nil, err
+	}
+	cmSliceRes := gjson.Get(string(propJSON), apisCmb.KeyConfigMap)
+	var storageTraitCMS []apisCmb.StorageTraitCM
+	err = json.Unmarshal([]byte(cmSliceRes.Raw), &storageTraitCMS)
+	if err != nil {
+		return nil, err
+	}
+	var mountFileInfos []apisCmb.MountFileInfo
+	for _, traitCM := range storageTraitCMS {
+		path := traitCM.MountPath
+		linuxPathReg := "^\\/(\\w+\\/?)+$"
+		isLinuxPath, _ := regexp.MatchString(linuxPathReg, path)
+
+		if isLinuxPath {
+			if !strings.HasSuffix(path, "/") {
+				path += "/"
+			}
+		} else {
+			if !strings.HasSuffix(path, "\\") {
+				path += "\\"
+			}
+		}
+		for key := range traitCM.Data {
+			mountFileInfos = append(mountFileInfos, apisCmb.MountFileInfo{
+				MountPath: traitCM.MountPath,
+				DataKey:   key,
+				URL:       path + key,
+			})
+		}
+	}
+	return mountFileInfos, nil
 }
 
 func (t *traitUsecaseImpl) CreateComponentStorageItem(ctx context.Context, app *model.Application, component *model.ApplicationComponent, createReq apisCmb.StorageItemRequest) (*model.ApplicationTrait, error) {
