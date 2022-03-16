@@ -56,8 +56,8 @@ func Setup(mgr ctrl.Manager, args controller.Args) error {
 	reconciler := Reconciler{
 		Client:          mgr.GetClient(),
 		DiscoveryClient: *discovery.NewDiscoveryClientForConfigOrDie(mgr.GetConfig()),
-		dm:              args.DiscoveryMapper,
-		record:          event.NewAPIRecorder(mgr.GetEventRecorderFor("ManualScalarTrait")),
+		dm:              args.DiscoveryMapper,                                               // 发现CRD
+		record:          event.NewAPIRecorder(mgr.GetEventRecorderFor("ManualScalarTrait")), // 事件记录
 		Scheme:          mgr.GetScheme(),
 	}
 	return reconciler.SetupWithManager(mgr)
@@ -73,7 +73,7 @@ type Reconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// Reconcile to reconcile manual trait.
+// Reconcile to reconcile manual trait.  拿到对象后按照对象向终态靠拢
 // +kubebuilder:rbac:groups=core.oam.dev,resources=manualscalertraits,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core.oam.dev,resources=manualscalertraits/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=core.oam.dev,resources=workloaddefinition,verbs=get;list;

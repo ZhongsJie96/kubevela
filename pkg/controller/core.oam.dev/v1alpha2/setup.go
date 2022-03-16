@@ -28,7 +28,7 @@ import (
 	"github.com/oam-dev/kubevela/pkg/controller/core.oam.dev/v1alpha2/core/workflow/workflowstepdefinition"
 )
 
-// Setup workload controllers.
+// Setup workload controllers. 核心，应用，trait，组件，policy，应用配置
 func Setup(mgr ctrl.Manager, args controller.Args) error {
 	switch args.OAMSpecVer {
 	case "all":

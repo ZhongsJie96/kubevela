@@ -27,18 +27,24 @@ import (
 	"github.com/oam-dev/kubevela/pkg/controller/utils"
 )
 
-// Setup workload controllers.
+// Setup workload controllers.  核心
 func Setup(mgr ctrl.Manager, disableCaps string, args controller.Args) error {
 	var functions []func(ctrl.Manager, controller.Args) error
 	switch disableCaps {
+	// 不禁用任何功能
 	case common.DisableNoneCaps:
 		functions = []func(ctrl.Manager, controller.Args) error{
+			// 添加工作负载reconcile控制器
 			manualscalertrait.Setup,
+			// reconcile健康范围控制器
 			healthscope.Setup,
+			// 添加组件reconcile 控制器
 			rollout.Setup,
 		}
+	//	禁用所有功能
 	case common.DisableAllCaps:
 	default:
+		// 转换成mapset
 		disableCapsSet := utils.StoreInSet(disableCaps)
 
 		if !disableCapsSet.Contains(common.ManualScalerTraitControllerName) {

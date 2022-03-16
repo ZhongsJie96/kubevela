@@ -76,7 +76,7 @@ func main() {
 	var healthAddr string
 	var disableCaps string
 	var storageDriver string
-	var applyOnceOnly string
+	var applyOnceOnly string // 在某些生产环境中，如果没有规格更改，工作负载或特性不应受到影响，可用选项包括：开、关、强制。
 	var qps float64
 	var burst int
 	var pprofAddr string
@@ -204,6 +204,7 @@ func main() {
 	ctrl.SetLogger(klogr.New())
 
 	leaderElectionID := util.GenerateLeaderElectionID(kubevelaName, controllerArgs.IgnoreAppWithoutControllerRequirement)
+	// 注册manager controller 核心
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Scheme:                     scheme,
 		MetricsBindAddress:         metricsAddr,
@@ -229,16 +230,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 注册健康检查
 	if err := registerHealthChecks(mgr); err != nil {
 		klog.ErrorS(err, "Unable to register ready/health checks")
 		os.Exit(1)
 	}
 
+	// 检查禁用参数
 	if err := utils.CheckDisabledCapabilities(disableCaps); err != nil {
 		klog.ErrorS(err, "Unable to get enabled capabilities")
 		os.Exit(1)
 	}
-
+	// 是否影响工作负载或Trait
 	switch strings.ToLower(applyOnceOnly) {
 	case "", "false", string(oamcontroller.ApplyOnceOnlyOff):
 		controllerArgs.ApplyMode = oamcontroller.ApplyOnceOnlyOff
@@ -255,13 +258,14 @@ func main() {
 			"apply-once-only", "on/off/force, by default it's off")
 		os.Exit(1)
 	}
-
+	// 发现集群里面CRD资源是否存在，获取CRD文件
 	dm, err := discoverymapper.New(mgr.GetConfig())
 	if err != nil {
 		klog.ErrorS(err, "Failed to create CRD discovery client")
 		os.Exit(1)
 	}
 	controllerArgs.DiscoveryMapper = dm
+	// k8s配置文件
 	pd, err := packages.NewPackageDiscover(mgr.GetConfig())
 	if err != nil {
 		klog.Error(err, "Failed to create CRD discovery for CUE package client")
@@ -271,6 +275,7 @@ func main() {
 	}
 	controllerArgs.PackageDiscover = pd
 
+	// 是否使用web hook
 	if useWebhook {
 		klog.InfoS("Enable webhook", "server port", strconv.Itoa(webhookPort))
 		oamwebhook.Register(mgr, controllerArgs)
@@ -280,11 +285,12 @@ func main() {
 		}
 	}
 
+	// todo read 核心！！！！ 创建Controller  oam controller
 	if err = oamv1alpha2.Setup(mgr, controllerArgs); err != nil {
 		klog.ErrorS(err, "Unable to setup the oam controller")
 		os.Exit(1)
 	}
-
+	// todo read 核心！！！！ vela core 控制器
 	if err = standardcontroller.Setup(mgr, disableCaps, controllerArgs); err != nil {
 		klog.ErrorS(err, "Unable to setup the vela core controller")
 		os.Exit(1)

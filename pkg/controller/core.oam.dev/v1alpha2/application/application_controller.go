@@ -473,9 +473,10 @@ func isHealthy(services []common.ApplicationComponentStatus) bool {
 	return true
 }
 
-// SetupWithManager install to manager
+// SetupWithManager install to manager  安装管理器
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// If Application Own these two child objects, AC status change will notify application controller and recursively update AC again, and trigger application event again...
+	// 监听application资源变化，从而触发reconcile方法
 	return ctrl.NewControllerManagedBy(mgr).
 		Watches(&source.Kind{
 			Type: &v1beta1.ResourceTracker{},
@@ -494,6 +495,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 			},
 		}).
 		WithOptions(controller.Options{
+			// 最大并发reconcile数
 			MaxConcurrentReconciles: r.concurrentReconciles,
 		}).
 		WithEventFilter(predicate.Funcs{
@@ -548,7 +550,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// Setup adds a controller that reconciles AppRollout.
+// Setup adds a controller that reconciles AppRollout. 应用控制器
 func Setup(mgr ctrl.Manager, args core.Args) error {
 	reconciler := Reconciler{
 		Client:   mgr.GetClient(),
