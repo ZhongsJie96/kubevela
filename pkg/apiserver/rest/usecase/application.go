@@ -22,6 +22,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/oam-dev/kubevela/pkg/apiserver/rest/apis/cmbv1"
+	"github.com/tidwall/gjson"
 	"math/rand"
 	"sort"
 	"strings"
@@ -589,6 +591,48 @@ func (c *applicationUsecaseImpl) DetailComponent(ctx context.Context, app *model
 	if err != nil {
 		return nil, err
 	}
+
+	compPropJSON := component.Properties.JSON()
+	envPropRes := gjson.Get(compPropJSON, "env")
+	type Env struct {
+		Name      string      `json:"name"`
+		Value     string      `json:"value,omitempty"`
+		ValueFrom interface{} `json:"valueFrom,omitempty"`
+	}
+	var envMap []Env
+	if envPropRes.Exists() {
+		err = json.Unmarshal([]byte(envPropRes.String()), &envMap)
+		if err != nil {
+			return nil, err
+		}
+	}
+	type Secret struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	}
+	var SecretSlice []Secret
+	type SecretStringData map[string]string
+	var secretDataSlice []SecretStringData
+	for _, trait := range component.Traits {
+		if strings.Contains(trait.Type, cmbv1.KeyStorage) {
+			traitPropJSON := trait.Properties.JSON()
+			secretData := gjson.Get(traitPropJSON, "secret.#.stringData")
+			if secretData.Exists() {
+				err := json.Unmarshal([]byte(secretData.String()), &secretDataSlice)
+				if err != nil {
+					return nil, err
+				}
+			}
+			break
+		}
+	}
+	for _, data := range secretDataSlice {
+		for key, value := range data {
+			SecretSlice = append(SecretSlice, Secret{Name: key, Value: value})
+		}
+	}
+	//mergeNativeEnvAndSecret(envMap, secretMap)
+
 	return &apisv1.DetailComponentResponse{
 		ApplicationComponent: component,
 	}, nil
