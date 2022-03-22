@@ -145,6 +145,7 @@ func main() {
 		_ = flag.Set("v", strconv.Itoa(int(commonconfig.LogDebug)))
 	}
 
+	// 性能优化前的性能分析工具
 	if pprofAddr != "" {
 		// Start pprof server if enabled
 		mux := http.NewServeMux()
@@ -161,6 +162,7 @@ func main() {
 
 		go func() {
 			go func() {
+				// context.Background函数的返回值就是根节点,更靠顶部的Goroutine应有办法主动关闭其下属的Goroutine的执行
 				ctx := context.Background()
 				<-ctx.Done()
 
