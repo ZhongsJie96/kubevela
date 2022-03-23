@@ -147,6 +147,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		return r.endWithNegativeCondition(logCtx, app, condition.ReconcileError(err), common.ApplicationStarting)
 	}
+	// 添加或者删除处理
 	endReconcile, result, err := r.handleFinalizers(logCtx, app, handler)
 	if err != nil {
 		if app.GetDeletionTimestamp() == nil {
@@ -364,19 +365,24 @@ func (r *Reconciler) result(err error) *reconcileResult {
 // NOTE Because resource tracker is cluster-scoped resources, we cannot garbage collect them
 // by setting application(namespace-scoped) as their owners.
 // We must delete all resource trackers related to an application through finalizer logic.
+// 终结resource tracker 资源（集群视角的资源，而不是命名空间）需要特殊处理，不能通过应用来垃圾回收
 func (r *Reconciler) handleFinalizers(ctx monitorContext.Context, app *v1beta1.Application, handler *AppHandler) (bool, ctrl.Result, error) {
+	// 还未删除
 	if app.ObjectMeta.DeletionTimestamp.IsZero() {
+		// 如果元数据的终结器不存在，
 		if !meta.FinalizerExists(app, resourceTrackerFinalizer) {
 			subCtx := ctx.Fork("handle-finalizers", monitorContext.DurationMetric(func(v float64) {
 				metrics.HandleFinalizersDurationHistogram.WithLabelValues("application", "add").Observe(v)
 			}))
 			defer subCtx.Commit("finish add finalizers")
+			// 添加 todo meta
 			meta.AddFinalizer(app, resourceTrackerFinalizer)
 			subCtx.Info("Register new finalizer for application", "finalizer", resourceTrackerFinalizer)
 			endReconcile := !EnableReconcileLoopReduction
 			return r.result(errors.Wrap(r.Client.Update(ctx, app), errUpdateApplicationFinalizer)).end(endReconcile)
 		}
 	} else {
+		// 删除终结器
 		if meta.FinalizerExists(app, resourceTrackerFinalizer) {
 			subCtx := ctx.Fork("handle-finalizers", monitorContext.DurationMetric(func(v float64) {
 				metrics.HandleFinalizersDurationHistogram.WithLabelValues("application", "remove").Observe(v)

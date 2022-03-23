@@ -777,7 +777,7 @@ func (c *applicationUsecaseImpl) Deploy(ctx context.Context, app *model.Applicat
 			return nil, bcode.ErrCreateNamespace
 		}
 	}
-	// step4: apply to controller cluster 部署apply， Applicator todo zsj 了解apply原理知识
+	// step4: apply to controller cluster 部署apply， Applicator todo zsj 了解apply原理知识  重点！！！！
 	err = c.apply.Apply(ctx, oamApp)
 	if err != nil {
 		appRevision.Status = model.RevisionStatusFail
