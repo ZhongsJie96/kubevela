@@ -91,7 +91,7 @@ type ViewLoader struct {
 	namespace string
 }
 
-// LoadTaskTemplate gets the workflowStep definition.
+// LoadTaskTemplate gets the workflowStep definition.  主要方法从cm中加载模板
 func (loader *ViewLoader) LoadTaskTemplate(ctx context.Context, name string) (string, error) {
 	cm := new(corev1.ConfigMap)
 	cmKey := client.ObjectKey{Name: name, Namespace: loader.namespace}

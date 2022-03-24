@@ -72,8 +72,9 @@ func NewVelaQLUsecase() VelaQLUsecase {
 	}
 }
 
-// QueryView get the view query results
+// QueryView get the view query results   获取查询结果（velaQL入口）
 func (v *velaQLUsecaseImpl) QueryView(ctx context.Context, velaQL string) (*apis.VelaQLViewResponse, error) {
+	// 解析velaQl语言到QueryView 将velaQL通过正则表达式分组，分为view等三部分。
 	query, err := velaql.ParseVelaQL(velaQL)
 	if err != nil {
 		return nil, bcode.ErrParseVelaQL
@@ -84,7 +85,7 @@ func (v *velaQLUsecaseImpl) QueryView(ctx context.Context, velaQL string) (*apis
 		log.Logger.Errorf("fail to query the view %s", err.Error())
 		return nil, bcode.ErrViewQuery
 	}
-
+	// 返回体json结构
 	resp := apis.VelaQLViewResponse{}
 	err = queryValue.UnmarshalTo(&resp)
 	if err != nil {

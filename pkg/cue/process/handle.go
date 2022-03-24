@@ -223,6 +223,7 @@ func (ctx *templateContext) BaseContextFile() string {
 }
 
 // ExtendedContextFile return cue format string of templateContext and extended secret context
+// 返回CUE格式字符串
 func (ctx *templateContext) ExtendedContextFile() string {
 	context := ctx.BaseContextFile()
 

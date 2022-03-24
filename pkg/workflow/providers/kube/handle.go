@@ -49,7 +49,7 @@ type provider struct {
 	cli    client.Client
 }
 
-// Apply create or update CR in cluster.
+// Apply create or update CR in cluster.  更新CR
 func (h *provider) Apply(ctx wfContext.Context, v *value.Value, act types.Action) error {
 	val, err := v.LookupValue("value")
 	if err != nil {

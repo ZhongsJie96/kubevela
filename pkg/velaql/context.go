@@ -54,7 +54,7 @@ func (c ViewContext) PatchComponent(name string, patchValue *value.Value) error 
 	return errors.New("not support func PatchComponent")
 }
 
-// GetVar get variable from workflow context.
+// GetVar get variable from workflow context. 通过路径寻找到CUE的值
 func (c ViewContext) GetVar(paths ...string) (*value.Value, error) {
 	return c.vars.LookupValue(paths...)
 }

@@ -89,7 +89,7 @@ type FilterOption struct {
 	Components       []string `json:"components,omitempty"`
 }
 
-// ListResourcesInApp lists CRs created by Application
+// ListResourcesInApp lists CRs created by Application // 获取应用创建的cr资源列表
 func (h *provider) ListResourcesInApp(ctx wfContext.Context, v *value.Value, act types.Action) error {
 	val, err := v.LookupValue("app")
 	if err != nil {
@@ -383,7 +383,7 @@ func Install(p providers.Providers, cli client.Client, cfg *rest.Config) {
 		cli: cli,
 		cfg: cfg,
 	}
-
+	// 将provider注册进去，单纯只是写入provider的m字段里面
 	p.Register(ProviderName, map[string]providers.Handler{
 		"listResourcesInApp":      prd.ListResourcesInApp,
 		"collectPods":             prd.CollectPods,

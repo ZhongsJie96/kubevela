@@ -68,14 +68,15 @@ func NewViewHandler(cli client.Client, cfg *rest.Config, dm discoverymapper.Disc
 	}
 }
 
-// QueryView generate view step
+// QueryView generate view step  Velaql 查询视图
 func (handler *ViewHandler) QueryView(ctx context.Context, qv QueryView) (*value.Value, error) {
+	// 定义输出模板
 	outputsTemplate := fmt.Sprintf(OutputsTemplate, qv.Export, qv.Export)
 	queryKey := QueryParameterKey{}
 	if err := json.Unmarshal([]byte(outputsTemplate), &queryKey); err != nil {
 		return nil, err
 	}
-
+	// 怎么执行一个workflow
 	handler.viewTask = v1beta1.WorkflowStep{
 		Name:       fmt.Sprintf("%s-%s", qv.View, qv.Export),
 		Type:       qv.View,
@@ -84,7 +85,9 @@ func (handler *ViewHandler) QueryView(ctx context.Context, qv QueryView) (*value
 	}
 
 	pCtx := process.NewContext(process.ContextData{})
+	// 视图discover，命名空间为vela-system
 	taskDiscover := tasks.NewViewTaskDiscover(handler.pd, handler.cli, handler.cfg, handler.dispatch, handler.delete, handler.namespace, 3, pCtx)
+	// 任务Generator，viewTask.Type = qv.view
 	genTask, err := taskDiscover.GetTaskGenerator(ctx, handler.viewTask.Type)
 	if err != nil {
 		return nil, err
@@ -99,6 +102,7 @@ func (handler *ViewHandler) QueryView(ctx context.Context, qv QueryView) (*value
 	if err != nil {
 		return nil, err
 	}
+	// 逻辑是在makeTaskGenerator里面
 	status, _, err := runner.Run(viewCtx, &wfTypes.TaskRunOptions{})
 	if err != nil {
 		return nil, err

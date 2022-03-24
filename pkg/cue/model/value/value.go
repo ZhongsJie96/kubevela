@@ -131,6 +131,7 @@ func TagFieldOrder(root *ast.File) error {
 
 // ProcessScript preprocess the script builtin function.
 func ProcessScript(root *ast.File) error {
+	// 预处理内置函数
 	return sets.PreprocessBuiltinFunc(root, "script", func(values []ast.Node) (ast.Expr, error) {
 		for _, v := range values {
 			lit, ok := v.(*ast.BasicLit)
@@ -403,7 +404,7 @@ func (val *Value) StepByList(handle func(name string, in *Value) (bool, error)) 
 	return nil
 }
 
-// StepByFields process the fields in order
+// StepByFields process the fields in order 按照字段进行处理
 func (val *Value) StepByFields(handle func(name string, in *Value) (bool, error)) error {
 	for i := 0; ; i++ {
 		field, end, err := val.fieldIndex(i)
@@ -421,7 +422,7 @@ func (val *Value) StepByFields(handle func(name string, in *Value) (bool, error)
 		if stop {
 			return nil
 		}
-
+		// 非定义的字段进行填充，统一处理完后到field.value值到val对象
 		if !isDef(field.Name) {
 			if err := val.FillObject(field.Value, field.Name); err != nil {
 				return err

@@ -29,8 +29,8 @@ type Handler func(ctx wfContext.Context, v *value.Value, act types.Action) error
 
 // Providers is provider discover interface.
 type Providers interface {
-	GetHandler(provider, name string) (Handler, bool)
-	Register(provider string, m map[string]Handler)
+	GetHandler(provider, name string) (Handler, bool) // 获取provider
+	Register(provider string, m map[string]Handler)   // 注册一些provider
 }
 
 type providers struct {
@@ -46,6 +46,7 @@ func (p *providers) GetHandler(providerName, handleName string) (Handler, bool) 
 	if !ok {
 		return nil, false
 	}
+	// 通过provider 获取handle
 	h, ok := provider[handleName]
 	return h, ok
 }

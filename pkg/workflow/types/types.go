@@ -63,13 +63,14 @@ type Operation struct {
 	FailedAfterRetries bool
 }
 
-// TaskGenerator will generate taskRunner.
+// TaskGenerator will generate taskRunner.  生成一个taskrunner
 type TaskGenerator func(wfStep v1beta1.WorkflowStep, options *GeneratorOptions) (TaskRunner, error)
 
-// GeneratorOptions is the options for generate task.
+// GeneratorOptions is the options for generate task.  生成任务选项
 type GeneratorOptions struct {
-	ID            string
-	PrePhase      common.WorkflowStepPhase
+	ID       string
+	PrePhase common.WorkflowStepPhase
+	// 可以定义workloadstep转换逻辑
 	StepConvertor func(step v1beta1.WorkflowStep) (v1beta1.WorkflowStep, error)
 }
 

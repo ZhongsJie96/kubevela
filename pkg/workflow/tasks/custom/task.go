@@ -72,6 +72,7 @@ type TaskLoader struct {
 
 // GetTaskGenerator get TaskGenerator by name.
 func (t *TaskLoader) GetTaskGenerator(ctx context.Context, name string) (wfTypes.TaskGenerator, error) {
+	// 通过vela-system命名空间读取configmap加载模板，loadTemplate函数是上层初始化好，这个地方已经获取到模板
 	templ, err := t.loadTemplate(ctx, name)
 	if err != nil {
 		return nil, err
@@ -100,11 +101,14 @@ func (tr *taskRunner) Pending(ctx wfContext.Context) bool {
 	return tr.checkPending(ctx)
 }
 
+// 构建任务生成器
 func (t *TaskLoader) makeTaskGenerator(templ string) (wfTypes.TaskGenerator, error) {
+	// genOpt ，id设置工作流ID ， 工作流阶段、工作流Step转换
 	return func(wfStep v1beta1.WorkflowStep, genOpt *wfTypes.GeneratorOptions) (wfTypes.TaskRunner, error) {
-
+		// 执行器
 		exec := &executor{
 			handlers: t.handlers,
+			// 工作流状态
 			wfStatus: common.WorkflowStepStatus{
 				Name:  wfStep.Name,
 				Type:  wfStep.Type,
@@ -116,6 +120,7 @@ func (t *TaskLoader) makeTaskGenerator(templ string) (wfTypes.TaskGenerator, err
 
 		if genOpt != nil {
 			exec.wfStatus.ID = genOpt.ID
+			// 转化workloadStep
 			if genOpt.StepConvertor != nil {
 				wfStep, err = genOpt.StepConvertor(wfStep)
 				if err != nil {
@@ -124,6 +129,7 @@ func (t *TaskLoader) makeTaskGenerator(templ string) (wfTypes.TaskGenerator, err
 			}
 		}
 
+		// 读取工作流属性配置
 		params := map[string]interface{}{}
 
 		if wfStep.Properties != nil && len(wfStep.Properties.Raw) > 0 {
@@ -136,10 +142,12 @@ func (t *TaskLoader) makeTaskGenerator(templ string) (wfTypes.TaskGenerator, err
 			}
 		}
 
+		// 生成taskRunner
 		tRunner := new(taskRunner)
 		tRunner.name = wfStep.Name
 		tRunner.checkPending = func(ctx wfContext.Context) bool {
 			for _, depend := range wfStep.DependsOn {
+				// 获取workload readyComponent__
 				if _, err := ctx.GetVar(hooks.ReadyComponent, depend); err != nil {
 					return true
 				}
@@ -154,12 +162,15 @@ func (t *TaskLoader) makeTaskGenerator(templ string) (wfTypes.TaskGenerator, err
 		tRunner.run = func(ctx wfContext.Context, options *wfTypes.TaskRunOptions) (common.WorkflowStepStatus, *wfTypes.Operation, error) {
 			if options.GetTracer == nil {
 				options.GetTracer = func(id string, step v1beta1.WorkflowStep) monitorContext.Context {
+					// 监听上下文
 					return monitorContext.NewTraceContext(context.Background(), "")
 				}
 			}
+			// 跟踪信息context
 			tracer := options.GetTracer(exec.wfStatus.ID, wfStep).AddTag("step_name", wfStep.Name, "step_type", wfStep.Type)
 			tracer.V(t.logLevel)
 			defer func() {
+				// 结束
 				tracer.Commit(string(exec.status().Phase))
 			}()
 
@@ -171,12 +182,13 @@ func (t *TaskLoader) makeTaskGenerator(templ string) (wfTypes.TaskGenerator, err
 			if t.runOptionsProcess != nil {
 				t.runOptionsProcess(options)
 			}
+			// 参数值
 			paramsValue, err := ctx.MakeParameter(params)
 			if err != nil {
 				tracer.Error(err, "make parameter")
 				return common.WorkflowStepStatus{}, nil, errors.WithMessage(err, "make parameter")
 			}
-
+			// 前置操作
 			for _, hook := range options.PreStartHooks {
 				if err := hook(ctx, paramsValue, wfStep); err != nil {
 					tracer.Error(err, "do preStartHook")
@@ -188,7 +200,7 @@ func (t *TaskLoader) makeTaskGenerator(templ string) (wfTypes.TaskGenerator, err
 				exec.err(ctx, err, StatusReasonParameter)
 				return exec.status(), exec.operation(), nil
 			}
-
+			// 构建出 参数部分的文件内容
 			var paramFile = model.ParameterFieldName + ": {}\n"
 			if params != nil {
 				ps, err := paramsValue.String()
@@ -197,7 +209,7 @@ func (t *TaskLoader) makeTaskGenerator(templ string) (wfTypes.TaskGenerator, err
 				}
 				paramFile = fmt.Sprintf(model.ParameterFieldName+": {%s}\n", ps)
 			}
-
+			// 拼凑出完整的文件内容，加载的模板自己参数内容，同时结合context内容
 			taskv, err := t.makeValue(ctx, strings.Join([]string{templ, paramFile}, "\n"), exec.wfStatus.ID, options.PCtx)
 			if err != nil {
 				exec.err(ctx, err, StatusReasonRendering)
@@ -209,8 +221,10 @@ func (t *TaskLoader) makeTaskGenerator(templ string) (wfTypes.TaskGenerator, err
 				exec.printStep("workflowStepStart", "workflow", "", taskv)
 				defer exec.printStep("workflowStepEnd", "workflow", "", taskv)
 			}
+			// 执行任务 （核心执行）！！！
 			if err := exec.doSteps(ctx, taskv); err != nil {
 				tracer.Error(err, "do steps")
+				// 写入工作流error状态
 				exec.err(ctx, err, StatusReasonExecute)
 				return exec.status(), exec.operation(), nil
 			}
@@ -230,6 +244,7 @@ func (t *TaskLoader) makeTaskGenerator(templ string) (wfTypes.TaskGenerator, err
 
 func (t *TaskLoader) makeValue(ctx wfContext.Context, templ string, id string, pCtx process.Context) (*value.Value, error) {
 	var contextTempl string
+	// 获取元数据
 	meta, _ := ctx.GetVar(wfTypes.ContextKeyMetadata)
 	if meta != nil {
 		ms, err := meta.String()
@@ -238,6 +253,7 @@ func (t *TaskLoader) makeValue(ctx wfContext.Context, templ string, id string, p
 		}
 		contextTempl = fmt.Sprintf("\ncontext: {%s}\ncontext: stepSessionID: \"%s\"", ms, id)
 	}
+	// 添加上下文信息，模板上下文生成CUE内容
 	contextTempl += "\n" + pCtx.ExtendedContextFile()
 
 	return value.NewValue(templ+contextTempl, t.pd, contextTempl, value.ProcessScript, value.TagFieldOrder)
@@ -319,6 +335,7 @@ func (exec *executor) Handle(ctx wfContext.Context, provider string, do string, 
 		exec.printStep("stepStart", provider, do, v)
 		defer exec.printStep("stepEnd", provider, do, v)
 	}
+	// 获取provider，并执行provider函数
 	h, exist := exec.handlers.GetHandler(provider, do)
 	if !exist {
 		return errors.Errorf("handler not found")
@@ -326,15 +343,20 @@ func (exec *executor) Handle(ctx wfContext.Context, provider string, do string, 
 	return h(ctx, v, exec)
 }
 
+// 最终通过providers 的handle处理任务
 func (exec *executor) doSteps(ctx wfContext.Context, v *value.Value) error {
+	// 操作类型
 	do := opTpy(v)
 	if do != "" && do != "steps" {
+		// provider信息 todo 写到了cue里面？
 		provider := opProvider(v)
+		// 执行
 		if err := exec.Handle(ctx, provider, do, v); err != nil {
 			return errors.WithMessagef(err, "run step(provider=%s,do=%s)", provider, do)
 		}
 		return nil
 	}
+	// 按顺序处理字段
 	return v.StepByFields(func(fieldName string, in *value.Value) (bool, error) {
 		if in.CueValue().IncompleteKind() == cue.BottomKind {
 			errInfo, err := sets.ToString(in.CueValue())
@@ -350,7 +372,7 @@ func (exec *executor) doSteps(ctx wfContext.Context, v *value.Value) error {
 			}
 			return false, retErr
 		}
-
+		// 是否是 #up或#up_开头
 		if isStepList(fieldName) {
 			return false, in.StepByList(func(name string, item *value.Value) (bool, error) {
 				do := opTpy(item)

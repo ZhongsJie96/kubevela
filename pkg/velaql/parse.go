@@ -62,6 +62,7 @@ func ParseVelaQL(ql string) (QueryView, error) {
 		Export: DefaultExportValue,
 	}
 
+	// 返回正则表达式中分组的名字
 	groupNames := qlRegexp.SubexpNames()
 	matched := qlRegexp.FindStringSubmatch(ql)
 	if len(matched) != len(groupNames) || (len(matched) != 0 && matched[0] != ql) {
@@ -74,7 +75,7 @@ func ParseVelaQL(ql string) (QueryView, error) {
 			result[name] = strings.TrimSpace(matched[i])
 		}
 	}
-
+	// 需要匹配到view
 	if len(result["view"]) == 0 {
 		return qv, errors.New("view name shouldn't be empty")
 	}

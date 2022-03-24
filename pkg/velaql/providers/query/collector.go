@@ -65,6 +65,7 @@ func (c *AppCollector) CollectResourceFromApp() ([]Resource, error) {
 	ctx := context.Background()
 	app := new(v1beta1.Application)
 	appKey := client.ObjectKey{Name: c.opt.Name, Namespace: c.opt.Namespace}
+	// 通过cm读取内容
 	if err := c.k8sClient.Get(ctx, appKey, app); err != nil {
 		return nil, err
 	}

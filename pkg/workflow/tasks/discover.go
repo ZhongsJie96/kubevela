@@ -43,14 +43,14 @@ import (
 )
 
 type taskDiscover struct {
-	builtins           map[string]types.TaskGenerator
-	remoteTaskDiscover *custom.TaskLoader
-	templateLoader     template.Loader
+	builtins           map[string]types.TaskGenerator // 内置
+	remoteTaskDiscover *custom.TaskLoader             // 外部
+	templateLoader     template.Loader                // 加载模板
 }
 
-// GetTaskGenerator get task generator by name.
+// GetTaskGenerator get task generator by name. 获取任务生成器
 func (td *taskDiscover) GetTaskGenerator(ctx context.Context, name string) (types.TaskGenerator, error) {
-
+	// 内置或者通过remote发现
 	tg, ok := td.builtins[name]
 	if ok {
 		return tg, nil
@@ -120,15 +120,17 @@ func (tr *suspendTaskRunner) Pending(ctx wfContext.Context) bool {
 func NewViewTaskDiscover(pd *packages.PackageDiscover, cli client.Client, cfg *rest.Config, apply kube.Dispatcher, delete kube.Deleter, viewNs string, logLevel int, pCtx process.Context) types.TaskDiscover {
 	handlerProviders := providers.NewProviders()
 
-	// install builtin provider
+	// install builtin provider 注册一些内置的provider
 	query.Install(handlerProviders, cli, cfg)
 	time.Install(handlerProviders)
 	kube.Install(handlerProviders, cli, apply, delete)
 	http.Install(handlerProviders, cli, viewNs)
 	email.Install(handlerProviders)
 
+	// 加载模板
 	templateLoader := template.NewViewTemplateLoader(cli, viewNs)
 	return &taskDiscover{
+		// 主要处理方法
 		remoteTaskDiscover: custom.NewTaskLoader(templateLoader.LoadTaskTemplate, pd, handlerProviders, logLevel, pCtx),
 		templateLoader:     templateLoader,
 	}
