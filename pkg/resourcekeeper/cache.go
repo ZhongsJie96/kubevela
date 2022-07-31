@@ -35,11 +35,11 @@ type resourceCacheEntry struct {
 	exists         bool
 	err            error
 	obj            *unstructured.Unstructured
-	mr             v1beta1.ManagedResource
+	mr             v1beta1.ManagedResource // resourceTracker 管控的资源
 	loaded         bool
 	usedBy         []*v1beta1.ResourceTracker
 	latestActiveRT *v1beta1.ResourceTracker
-	gcExecutorRT   *v1beta1.ResourceTracker
+	gcExecutorRT   *v1beta1.ResourceTracker // gc 执行rt
 }
 
 type resourceCache struct {

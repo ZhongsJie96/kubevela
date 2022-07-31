@@ -105,6 +105,7 @@ func (h *resourceKeeper) GarbageCollect(ctx context.Context, options ...GCOption
 		if h.garbageCollectPolicy.KeepLegacyResource {
 			options = append(options, PassiveGCOption{})
 		}
+		// 控制顺序
 		switch h.garbageCollectPolicy.Order {
 		case v1alpha1.OrderDependency:
 			options = append(options, DependencyGCOption{})
@@ -184,6 +185,7 @@ func (h *gcHandler) scan(ctx context.Context) (inactiveRTs []*v1beta1.ResourceTr
 			for _, rt := range h._historyRTs {
 				if rt != nil {
 					inactive := true
+					// 所有的资源是否存在，或者不由该rt回收
 					for _, mr := range rt.Spec.ManagedResources {
 						entry := h.cache.get(auth.ContextWithUserInfo(ctx, h.app), mr)
 						if entry.err == nil && (entry.gcExecutorRT != rt || !entry.exists) {
@@ -203,11 +205,14 @@ func (h *gcHandler) scan(ctx context.Context) (inactiveRTs []*v1beta1.ResourceTr
 	return inactiveRTs
 }
 
+// Mark 回收没有用的rt
 func (h *gcHandler) Mark(ctx context.Context) error {
 	cb := h.monitor("mark")
 	defer cb()
+	// 扫描所有
 	inactiveRTs := h.scan(ctx)
 	for _, rt := range inactiveRTs {
+		// 删除不需要的rt
 		if rt != nil && rt.GetDeletionTimestamp() == nil {
 			if err := h.Client.Delete(ctx, rt); err != nil && !kerrors.IsNotFound(err) {
 				return err
@@ -245,6 +250,7 @@ func (h *gcHandler) Sweep(ctx context.Context) (finished bool, waiting []v1beta1
 	defer cb()
 	finished = true
 	for _, rt := range append(h._historyRTs, h._currentRT, h._rootRT) {
+		// remove finalizer （同时添加校验）
 		if rt != nil && rt.GetDeletionTimestamp() != nil {
 			_finished, mr, err := h.checkAndRemoveResourceTrackerFinalizer(ctx, rt)
 			if err != nil {

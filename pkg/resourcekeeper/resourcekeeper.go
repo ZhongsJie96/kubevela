@@ -53,10 +53,10 @@ type resourceKeeper struct {
 	mu  sync.Mutex
 
 	applicator  apply.Applicator
-	_rootRT     *v1beta1.ResourceTracker
-	_currentRT  *v1beta1.ResourceTracker
-	_historyRTs []*v1beta1.ResourceTracker
-	_crRT       *v1beta1.ResourceTracker
+	_rootRT     *v1beta1.ResourceTracker   // 根
+	_currentRT  *v1beta1.ResourceTracker   // 当前  从versioned中找到当前的
+	_historyRTs []*v1beta1.ResourceTracker // 历史
+	_crRT       *v1beta1.ResourceTracker   //componentRevision
 
 	applyOncePolicy      *v1alpha1.ApplyOncePolicySpec
 	garbageCollectPolicy *v1alpha1.GarbageCollectPolicySpec
@@ -121,9 +121,11 @@ func NewResourceKeeper(ctx context.Context, cli client.Client, app *v1beta1.Appl
 		applicator: apply.NewAPIApplicator(cli),
 		cache:      newResourceCache(cli, app),
 	}
+	// 加载resourceTracker ， 加载所有root, versioned, cr 类型并区分当前版本以及历史版本
 	if err = h.loadResourceTrackers(ctx); err != nil {
 		return nil, errors.Wrapf(err, "failed to load resourcetrackers")
 	}
+	// 解析资源策略， applyOnce ， sharedResource， GC
 	if err = h.parseApplicationResourcePolicy(); err != nil {
 		return nil, errors.Wrapf(err, "failed to parse resource policy")
 	}

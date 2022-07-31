@@ -175,6 +175,7 @@ func ListApplicationResourceTrackers(ctx context.Context, cli client.Client, app
 	}
 	for _, _rt := range rts {
 		rt := _rt.DeepCopy()
+		// 如果不属于当前应用的报错
 		if rt.GetLabels() != nil && rt.GetLabels()[oam.LabelAppUID] != "" && rt.GetLabels()[oam.LabelAppUID] != string(app.UID) {
 			return nil, nil, nil, nil, fmt.Errorf("resourcetracker %s exists but controlled by another application (uid: %s), this could probably be cased by some mistakes while garbage collecting outdated resource. Please check this resourcetrakcer and delete it manually", rt.Name, rt.GetLabels()[oam.LabelAppUID])
 		}
@@ -182,8 +183,10 @@ func ListApplicationResourceTrackers(ctx context.Context, cli client.Client, app
 		case v1beta1.ResourceTrackerTypeRoot:
 			rootRT = rt
 		case v1beta1.ResourceTrackerTypeVersioned:
+			// 版本里面获取到当前版本
 			if publishVersion := getPublishVersion(app); publishVersion != "" {
 				if getPublishVersion(rt) == publishVersion {
+					// 当前版本
 					currentRT = rt
 				} else {
 					historyRTs = append(historyRTs, rt)
@@ -207,6 +210,7 @@ func ListApplicationResourceTrackers(ctx context.Context, cli client.Client, app
 }
 
 // RecordManifestsInResourceTracker records resources in ResourceTracker
+
 func RecordManifestsInResourceTracker(
 	ctx context.Context,
 	cli client.Client,

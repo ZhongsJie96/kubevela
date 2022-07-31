@@ -67,6 +67,7 @@ const (
 
 const (
 	// baseWorkflowBackoffWaitTime is the time to wait gc check
+	// GC 等待时间
 	baseGCBackoffWaitTime = 3000 * time.Millisecond
 
 	// resourceTrackerFinalizer is to delete the resource tracker of the latest app revision.

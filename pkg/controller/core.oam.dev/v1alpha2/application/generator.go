@@ -67,6 +67,7 @@ func (h *AppHandler) GenerateApplicationSteps(ctx monitorContext.Context,
 	appRev *v1beta1.ApplicationRevision) ([]wfTypes.TaskRunner, error) {
 
 	handlerProviders := providers.NewProviders()
+	// provider 信息
 	kube.Install(handlerProviders, app, h.r.Client, h.Dispatch, h.Delete)
 	oamProvider.Install(handlerProviders, app, af, h.r.Client, h.applyComponentFunc(
 		appParser, appRev, af), h.renderComponentFunc(appParser, appRev, af))

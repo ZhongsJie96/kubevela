@@ -25,9 +25,9 @@ const (
 	ApplyOncePolicyType = "apply-once"
 )
 
-// ApplyOncePolicySpec defines the spec of preventing configuration drift
+// ApplyOncePolicySpec defines the spec of preventing configuration drift，防止配置漂移
 type ApplyOncePolicySpec struct {
-	Enable bool `json:"enable"`
+	Enable bool `json:"enable"` // 是否开启
 	// +optional
 	Rules []ApplyOncePolicyRule `json:"rules,omitempty"`
 }
